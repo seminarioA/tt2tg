@@ -25,6 +25,12 @@ async def close_pool():
 
 # ── Accounts ─────────────────────────────────────────────────────────────────
 
+async def get_account_by_id(account_id: int) -> Optional[dict]:
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT * FROM accounts WHERE id = $1", account_id)
+    return dict(row) if row else None
+
+
 async def add_account(username: str, chat_id: int) -> dict:
     pool = await get_pool()
     row = await pool.fetchrow(

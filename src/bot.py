@@ -129,7 +129,7 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirmar", callback_data=f"restart:confirm:{username}:{chat_id}"),
+            InlineKeyboardButton("✅ Confirmar", callback_data=f"restart:confirm:{account['id']}"),
             InlineKeyboardButton("❌ Cancelar",  callback_data="restart:cancel"),
         ]
     ])
@@ -142,23 +142,31 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
 
-    if query.data == "restart:cancel":
-        await query.edit_message_text("❌ Reinicio cancelado.")
-        return
+        if query.data == "restart:cancel":
+            await query.edit_message_text("❌ Reinicio cancelado.")
+            return
 
-    # data = "restart:confirm:username:chat_id"
-    _, _, username, chat_id_str = query.data.split(":", 3)
-    account = await db.get_account_by_username_and_chat(username, int(chat_id_str))
+        # data = "restart:confirm:{account_id}"
+        account_id = int(query.data.split(":")[-1])
+        account = await db.get_account_by_id(account_id)
 
-    if not account:
-        await query.edit_message_text(f"❌ @{username} no encontrado.")
-        return
+        if not account:
+            await query.edit_message_text("❌ Cuenta no encontrada.")
+            return
 
-    await db.reset_account_sent(account["id"])
-    await query.edit_message_text(f"🔄 @{username} — reiniciando envío desde el principio…")
-    context.application.create_task(archive_account(context.bot, account))
+        await db.reset_account_sent(account["id"])
+        await query.edit_message_text(f"🔄 @{account['username']} — reiniciando envío desde el principio…")
+        context.application.create_task(archive_account(context.bot, account))
+
+    except Exception as exc:
+        logger.error("callback_restart error: %s", exc)
+        try:
+            await query.edit_message_text("❌ Error al procesar. Intentá de nuevo.")
+        except Exception:
+            pass
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
