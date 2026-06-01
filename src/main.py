@@ -28,7 +28,10 @@ async def main():
 
     async with app:
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
+        await app.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "callback_query"],
+        )
         logger.info("Telegram bot started.")
 
         # Resume any archives that were interrupted by a previous restart
