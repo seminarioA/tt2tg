@@ -158,6 +158,7 @@ async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         await db.reset_account_sent(account["id"])
+        await resume_account(account)  # clear pause if it was paused before
         await query.edit_message_text(f"🔄 @{account['username']} — reiniciando envío desde el principio…")
         context.application.create_task(archive_account(context.bot, account))
 
