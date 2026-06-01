@@ -73,15 +73,22 @@ async def update_last_checked(account_id: int):
     )
 
 
+async def set_paused(account_id: int, paused: bool):
+    pool = await get_pool()
+    await pool.execute(
+        "UPDATE accounts SET is_paused = $1 WHERE id = $2", paused, account_id
+    )
+
+
 async def get_accounts_with_unsent_videos() -> list[dict]:
-    """Active accounts that have videos recorded but not yet sent — used for restart recovery."""
+    """Active, non-paused accounts with unsent videos — used for restart recovery."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
         SELECT DISTINCT ON (a.id) a.*
         FROM accounts a
         JOIN videos v ON v.account_id = a.id
-        WHERE a.is_active = TRUE AND v.sent_at IS NULL
+        WHERE a.is_active = TRUE AND a.is_paused = FALSE AND v.sent_at IS NULL
         ORDER BY a.id, a.added_at
         """
     )

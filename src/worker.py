@@ -19,24 +19,16 @@ logger = logging.getLogger(__name__)
 # Accounts currently doing their initial backlog archive
 _archiving: set[str] = set()
 
-# Accounts manually paused via /stop
-_paused: set[str] = set()
-
-
 def _key(username: str, chat_id: int) -> str:
     return f"{username}:{chat_id}"
 
 
-def pause_account(username: str, chat_id: int):
-    _paused.add(_key(username, chat_id))
+async def pause_account(account: dict):
+    await db.set_paused(account["id"], True)
 
 
-def resume_account(username: str, chat_id: int):
-    _paused.discard(_key(username, chat_id))
-
-
-def is_paused(username: str, chat_id: int) -> bool:
-    return _key(username, chat_id) in _paused
+async def resume_account(account: dict):
+    await db.set_paused(account["id"], False)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,7 +101,8 @@ async def _iter_new_videos(bot: Bot, account: dict, entries: list[dict]) -> int:
     username = account["username"]
     sent = 0
     for entry in entries:
-        if _key(username, account["chat_id"]) in _paused:
+        # Re-read paused state from DB so /stop takes effect mid-loop
+        if (await db.get_account_by_username_and_chat(username, account["chat_id"]) or {}).get("is_paused"):
             logger.info("@%s paused — stopping mid-send", username)
             break
 
@@ -180,7 +173,8 @@ async def archive_account(bot: Bot, account: dict, resuming: bool = False):
         sent = await _iter_new_videos(bot, account, list(reversed(entries)))
         await db.update_last_checked(account["id"])
 
-        if _key(username, chat_id) in _paused:
+        fresh = await db.get_account_by_username_and_chat(username, chat_id)
+        if fresh and fresh.get("is_paused"):
             await send_text(
                 bot, chat_id,
                 f"⏸️ @{username} — pausado ({sent} enviados en esta sesión). Usá /resume @{username} para continuar.",

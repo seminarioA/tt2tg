@@ -88,7 +88,11 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     username = context.args[0].lstrip("@").lower()
     chat_id = update.effective_chat.id
-    pause_account(username, chat_id)
+    account = await db.get_account_by_username_and_chat(username, chat_id)
+    if not account or not account["is_active"]:
+        await update.message.reply_text(f"@{username} no encontrado en este chat.")
+        return
+    await pause_account(account)
     await update.message.reply_text(f"⏸️ @{username} pausado. El video en curso termina de enviarse y luego para.")
 
 
@@ -105,7 +109,7 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"@{username} no encontrado en este chat.")
         return
 
-    resume_account(username, chat_id)
+    await resume_account(account)
     await update.message.reply_text(f"▶️ @{username} reanudado.")
     context.application.create_task(archive_account(context.bot, account, resuming=True))
 
