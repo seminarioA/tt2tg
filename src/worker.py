@@ -91,7 +91,7 @@ async def _process_video(bot: Bot, account: dict, url: str, info: dict) -> bool:
         pass
 
     if sent:
-        await db.mark_video_sent(video_id)
+        await db.mark_video_sent(video_id, account["id"])
 
     return sent
 
@@ -111,7 +111,7 @@ async def _iter_new_videos(bot: Bot, account: dict, entries: list[dict]) -> int:
             continue
 
         video_id = str(entry.get("id", ""))
-        if video_id and await db.video_was_sent(video_id):
+        if video_id and await db.video_was_sent(video_id, account["id"]):
             continue
 
         info = await downloader.fetch_video_info(url)

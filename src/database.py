@@ -114,10 +114,11 @@ async def get_sent_video_count(account_id: int) -> int:
 
 # ── Videos ───────────────────────────────────────────────────────────────────
 
-async def video_was_sent(video_id: str) -> bool:
+async def video_was_sent(video_id: str, account_id: int) -> bool:
     pool = await get_pool()
     row = await pool.fetchrow(
-        "SELECT id FROM videos WHERE video_id = $1 AND sent_at IS NOT NULL", video_id
+        "SELECT id FROM videos WHERE video_id = $1 AND account_id = $2 AND sent_at IS NOT NULL",
+        video_id, account_id,
     )
     return row is not None
 
@@ -133,7 +134,7 @@ async def add_video(
     like_count: Optional[int] = None,
     repost_count: Optional[int] = None,
 ) -> bool:
-    """Insert video, ignore if already exists. Returns True if inserted."""
+    """Insert video for this account, ignore if already exists. Returns True if inserted."""
     pool = await get_pool()
     result = await pool.execute(
         """
@@ -141,7 +142,7 @@ async def add_video(
           (video_id, account_id, url, metadata_path, upload_date,
            description, like_count, repost_count)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT (video_id) DO NOTHING
+        ON CONFLICT (video_id, account_id) DO NOTHING
         """,
         video_id, account_id, url, metadata_path, upload_date,
         description, like_count, repost_count,
@@ -149,10 +150,11 @@ async def add_video(
     return result.split()[-1] != "0"
 
 
-async def mark_video_sent(video_id: str):
+async def mark_video_sent(video_id: str, account_id: int):
     pool = await get_pool()
     await pool.execute(
-        "UPDATE videos SET sent_at = NOW() WHERE video_id = $1", video_id
+        "UPDATE videos SET sent_at = NOW() WHERE video_id = $1 AND account_id = $2",
+        video_id, account_id,
     )
 
 
