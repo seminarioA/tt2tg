@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import signal
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -23,7 +20,7 @@ HELP_TEXT = """
 /resume @usuario — reanudar envío desde donde quedó
 /list — ver cuentas monitoreadas
 /status — estado del bot
-/restart — reiniciar el bot
+/restart @usuario — reenviar todos los videos desde el principio
 /help — mostrar esta ayuda
 """.strip()
 
@@ -111,13 +108,28 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /restart @usuario")
+        return
+
+    username = context.args[0].lstrip("@").lower()
+    account = await db.get_account_by_username(username)
+
+    if not account or not account["is_active"]:
+        await update.message.reply_text(f"@{username} no encontrado en el monitoreo.")
+        return
+
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirmar", callback_data="restart:confirm"),
+            InlineKeyboardButton("✅ Confirmar", callback_data=f"restart:confirm:{username}"),
             InlineKeyboardButton("❌ Cancelar",  callback_data="restart:cancel"),
         ]
     ])
-    await update.message.reply_text("⚠️ ¿Reiniciar el bot?", reply_markup=keyboard)
+    await update.message.reply_text(
+        f"⚠️ ¿Reiniciar el envío de @{username}?\nSe reenviarán *todos* los videos desde el principio.",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
 
 
 async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,9 +140,17 @@ async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Reinicio cancelado.")
         return
 
-    await query.edit_message_text("🔄 Reiniciando…")
-    # Docker tiene restart: unless-stopped, así que al salir vuelve solo
-    os.kill(os.getpid(), signal.SIGTERM)
+    # data = "restart:confirm:username"
+    username = query.data.split(":", 2)[2]
+    account = await db.get_account_by_username(username)
+
+    if not account:
+        await query.edit_message_text(f"❌ @{username} no encontrado.")
+        return
+
+    await db.reset_account_sent(account["id"])
+    await query.edit_message_text(f"🔄 @{username} — reiniciando envío desde el principio…")
+    context.application.create_task(archive_account(context.bot, account))
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):

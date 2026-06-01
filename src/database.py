@@ -143,3 +143,11 @@ async def mark_video_sent(video_id: str):
     await pool.execute(
         "UPDATE videos SET sent_at = NOW() WHERE video_id = $1", video_id
     )
+
+
+async def reset_account_sent(account_id: int):
+    """Mark all videos of an account as unsent so they get re-sent from scratch."""
+    pool = await get_pool()
+    await pool.execute(
+        "UPDATE videos SET sent_at = NULL WHERE account_id = $1", account_id
+    )
