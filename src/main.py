@@ -6,7 +6,7 @@ import signal
 
 import database as db
 from bot import build_app
-from worker import polling_loop
+from worker import polling_loop, archive_account
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +30,13 @@ async def main():
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
         logger.info("Telegram bot started.")
+
+        # Resume any archives that were interrupted by a previous restart
+        pending = await db.get_accounts_with_unsent_videos()
+        if pending:
+            logger.info("Resuming interrupted archives for: %s", [a["username"] for a in pending])
+            for account in pending:
+                app.create_task(archive_account(app.bot, account))
 
         worker_task = asyncio.create_task(polling_loop(app.bot))
 

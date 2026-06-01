@@ -70,6 +70,20 @@ async def update_last_checked(account_id: int):
     )
 
 
+async def get_accounts_with_unsent_videos() -> list[dict]:
+    """Accounts that have videos recorded but not yet sent — used for restart recovery."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT a.* FROM accounts a
+        JOIN videos v ON v.account_id = a.id
+        WHERE a.is_active = TRUE AND v.sent_at IS NULL
+        ORDER BY a.added_at
+        """
+    )
+    return [dict(r) for r in rows]
+
+
 async def get_account_video_count(account_id: int) -> int:
     pool = await get_pool()
     row = await pool.fetchrow(
