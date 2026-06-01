@@ -133,10 +133,16 @@ async def _iter_new_videos(bot: Bot, account: dict, entries: list[dict]) -> int:
 
 # ── Public: called from bot command handler ───────────────────────────────────
 
-async def archive_account(bot: Bot, account: dict):
-    """Initial backlog: fetch all videos and send them."""
+async def archive_account(bot: Bot, account: dict, resuming: bool = False):
+    """Fetch all videos and send unsent ones. resuming=True changes status messages."""
     username = account["username"]
     chat_id = account["chat_id"]
+
+    # Prevent two parallel archive tasks for the same account
+    if username in _archiving:
+        logger.warning("archive_account called while @%s is already archiving — skipped", username)
+        return
+
     _archiving.add(username)
 
     try:
@@ -150,19 +156,34 @@ async def archive_account(bot: Bot, account: dict):
             return
 
         total = len(entries)
-        await send_text(
-            bot, chat_id,
-            f"📦 Cuenta registrada: @{username}\n{total} videos encontrados\n📤 Enviando…",
-        )
+
+        if resuming:
+            already_sent = await db.get_sent_video_count(account["id"])
+            pending = total - already_sent
+            await send_text(
+                bot, chat_id,
+                f"▶️ @{username}\n{pending} videos pendientes de {total} totales\n📤 Continuando…",
+            )
+        else:
+            await send_text(
+                bot, chat_id,
+                f"📦 Cuenta registrada: @{username}\n{total} videos encontrados\n📤 Enviando…",
+            )
 
         # Oldest → newest
         sent = await _iter_new_videos(bot, account, list(reversed(entries)))
         await db.update_last_checked(account["id"])
 
         if username in _paused:
-            await send_text(bot, chat_id, f"⏸️ @{username} — envío pausado ({sent} enviados). Usá /resume @{username} para continuar.")
+            await send_text(
+                bot, chat_id,
+                f"⏸️ @{username} — pausado ({sent} enviados en esta sesión). Usá /resume @{username} para continuar.",
+            )
         else:
-            await send_text(bot, chat_id, f"✅ @{username} — {sent}/{total} videos enviados\n🔄 Monitoreando nuevos videos…")
+            await send_text(
+                bot, chat_id,
+                f"✅ @{username} — {sent} videos enviados\n🔄 Monitoreando nuevos videos…",
+            )
 
     finally:
         _archiving.discard(username)

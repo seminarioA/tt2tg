@@ -36,7 +36,7 @@ async def main():
         if pending:
             logger.info("Resuming interrupted archives for: %s", [a["username"] for a in pending])
             for account in pending:
-                app.create_task(archive_account(app.bot, account))
+                app.create_task(archive_account(app.bot, account, resuming=True))
 
         worker_task = asyncio.create_task(polling_loop(app.bot))
 

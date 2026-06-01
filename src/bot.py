@@ -103,8 +103,8 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     resume_account(username)
-    await update.message.reply_text(f"▶️ @{username} reanudado. Continuando desde donde quedó…")
-    context.application.create_task(archive_account(context.bot, account))
+    await update.message.reply_text(f"▶️ @{username} reanudado.")
+    context.application.create_task(archive_account(context.bot, account, resuming=True))
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -92,6 +92,15 @@ async def get_account_video_count(account_id: int) -> int:
     return row["n"]
 
 
+async def get_sent_video_count(account_id: int) -> int:
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT COUNT(*) AS n FROM videos WHERE account_id = $1 AND sent_at IS NOT NULL",
+        account_id,
+    )
+    return row["n"]
+
+
 # ── Videos ───────────────────────────────────────────────────────────────────
 
 async def video_was_sent(video_id: str) -> bool:
