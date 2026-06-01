@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import signal
 
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 import config
 import database as db
@@ -21,6 +23,7 @@ HELP_TEXT = """
 /resume @usuario — reanudar envío desde donde quedó
 /list — ver cuentas monitoreadas
 /status — estado del bot
+/restart — reiniciar el bot
 /help — mostrar esta ayuda
 """.strip()
 
@@ -107,6 +110,29 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.application.create_task(archive_account(context.bot, account, resuming=True))
 
 
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Confirmar", callback_data="restart:confirm"),
+            InlineKeyboardButton("❌ Cancelar",  callback_data="restart:cancel"),
+        ]
+    ])
+    await update.message.reply_text("⚠️ ¿Reiniciar el bot?", reply_markup=keyboard)
+
+
+async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "restart:cancel":
+        await query.edit_message_text("❌ Reinicio cancelado.")
+        return
+
+    await query.edit_message_text("🔄 Reiniciando…")
+    # Docker tiene restart: unless-stopped, así que al salir vuelve solo
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
@@ -119,5 +145,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("resume", cmd_resume))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("restart", cmd_restart))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CallbackQueryHandler(callback_restart, pattern="^restart:"))
     return app
