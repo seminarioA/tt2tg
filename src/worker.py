@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 # Accounts currently doing their initial backlog archive
 _archiving: set[str] = set()
 
+# Accounts manually paused via /stop
+_paused: set[str] = set()
+
+
+def pause_account(username: str):
+    _paused.add(username)
+
+
+def resume_account(username: str):
+    _paused.discard(username)
+
+
+def is_paused(username: str) -> bool:
+    return username in _paused
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,8 +102,13 @@ async def _process_video(bot: Bot, account: dict, url: str, info: dict) -> bool:
 
 async def _iter_new_videos(bot: Bot, account: dict, entries: list[dict]) -> int:
     """Process entries that haven't been sent yet. Returns count of sent videos."""
+    username = account["username"]
     sent = 0
     for entry in entries:
+        if username in _paused:
+            logger.info("@%s paused — stopping mid-send", username)
+            break
+
         url = entry.get("webpage_url") or entry.get("url")
         if not url:
             continue
@@ -135,12 +155,14 @@ async def archive_account(bot: Bot, account: dict):
             f"📦 Cuenta registrada: @{username}\n{total} videos encontrados\n📤 Enviando…",
         )
 
-        sent = await _iter_new_videos(bot, account, entries)
+        # Oldest → newest
+        sent = await _iter_new_videos(bot, account, list(reversed(entries)))
         await db.update_last_checked(account["id"])
-        await send_text(
-            bot, chat_id,
-            f"✅ @{username} — {sent}/{total} videos enviados\n🔄 Monitoreando nuevos videos…",
-        )
+
+        if username in _paused:
+            await send_text(bot, chat_id, f"⏸️ @{username} — envío pausado ({sent} enviados). Usá /resume @{username} para continuar.")
+        else:
+            await send_text(bot, chat_id, f"✅ @{username} — {sent}/{total} videos enviados\n🔄 Monitoreando nuevos videos…")
 
     finally:
         _archiving.discard(username)

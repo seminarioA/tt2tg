@@ -8,7 +8,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 import config
 import database as db
-from worker import archive_account
+from worker import archive_account, pause_account, resume_account, is_paused
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,8 @@ HELP_TEXT = """
 
 /add @usuario — registrar cuenta y archivar todos sus videos
 /remove @usuario — dejar de monitorear una cuenta
+/stop @usuario — pausar envío de backlog
+/resume @usuario — reanudar envío desde donde quedó
 /list — ver cuentas monitoreadas
 /status — estado del bot
 /help — mostrar esta ayuda
@@ -78,6 +80,33 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /stop @usuario")
+        return
+
+    username = context.args[0].lstrip("@").lower()
+    pause_account(username)
+    await update.message.reply_text(f"⏸️ @{username} pausado. El video en curso termina de enviarse y luego para.")
+
+
+async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /resume @usuario")
+        return
+
+    username = context.args[0].lstrip("@").lower()
+    account = await db.get_account_by_username(username)
+
+    if not account or not account["is_active"]:
+        await update.message.reply_text(f"@{username} no encontrado en el monitoreo.")
+        return
+
+    resume_account(username)
+    await update.message.reply_text(f"▶️ @{username} reanudado. Continuando desde donde quedó…")
+    context.application.create_task(archive_account(context.bot, account))
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
@@ -86,6 +115,8 @@ def build_app() -> Application:
     app = Application.builder().token(config.BOT_TOKEN).build()
     app.add_handler(CommandHandler("add", cmd_add))
     app.add_handler(CommandHandler("remove", cmd_remove))
+    app.add_handler(CommandHandler("stop", cmd_stop))
+    app.add_handler(CommandHandler("resume", cmd_resume))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("help", cmd_help))
