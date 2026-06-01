@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 import config
 import database as db
-from worker import archive_account, pause_account, resume_account, is_paused
+from worker import archive_account, pause_account, resume_account
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,9 @@ async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = context.args[0].lstrip("@").lower()
     chat_id = update.effective_chat.id
 
-    existing = await db.get_account_by_username(username)
+    existing = await db.get_account_by_username_and_chat(username, chat_id)
     if existing and existing["is_active"]:
-        await update.message.reply_text(f"@{username} ya está siendo monitoreado.")
+        await update.message.reply_text(f"@{username} ya está siendo monitoreado en este chat.")
         return
 
     account = await db.add_account(username, chat_id)
@@ -49,12 +49,13 @@ async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     username = context.args[0].lstrip("@").lower()
-    removed = await db.remove_account(username)
+    chat_id = update.effective_chat.id
+    removed = await db.remove_account(username, chat_id)
 
     if removed:
-        await update.message.reply_text(f"✅ @{username} eliminado del monitoreo.")
+        await update.message.reply_text(f"✅ @{username} eliminado del monitoreo en este chat.")
     else:
-        await update.message.reply_text(f"No se encontró @{username} en el monitoreo.")
+        await update.message.reply_text(f"No se encontró @{username} en este chat.")
 
 
 async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,7 +87,8 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     username = context.args[0].lstrip("@").lower()
-    pause_account(username)
+    chat_id = update.effective_chat.id
+    pause_account(username, chat_id)
     await update.message.reply_text(f"⏸️ @{username} pausado. El video en curso termina de enviarse y luego para.")
 
 
@@ -96,13 +98,14 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     username = context.args[0].lstrip("@").lower()
-    account = await db.get_account_by_username(username)
+    chat_id = update.effective_chat.id
+    account = await db.get_account_by_username_and_chat(username, chat_id)
 
     if not account or not account["is_active"]:
-        await update.message.reply_text(f"@{username} no encontrado en el monitoreo.")
+        await update.message.reply_text(f"@{username} no encontrado en este chat.")
         return
 
-    resume_account(username)
+    resume_account(username, chat_id)
     await update.message.reply_text(f"▶️ @{username} reanudado.")
     context.application.create_task(archive_account(context.bot, account, resuming=True))
 
@@ -113,15 +116,16 @@ async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     username = context.args[0].lstrip("@").lower()
-    account = await db.get_account_by_username(username)
+    chat_id = update.effective_chat.id
+    account = await db.get_account_by_username_and_chat(username, chat_id)
 
     if not account or not account["is_active"]:
-        await update.message.reply_text(f"@{username} no encontrado en el monitoreo.")
+        await update.message.reply_text(f"@{username} no encontrado en este chat.")
         return
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Confirmar", callback_data=f"restart:confirm:{username}"),
+            InlineKeyboardButton("✅ Confirmar", callback_data=f"restart:confirm:{username}:{chat_id}"),
             InlineKeyboardButton("❌ Cancelar",  callback_data="restart:cancel"),
         ]
     ])
@@ -140,9 +144,9 @@ async def callback_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Reinicio cancelado.")
         return
 
-    # data = "restart:confirm:username"
-    username = query.data.split(":", 2)[2]
-    account = await db.get_account_by_username(username)
+    # data = "restart:confirm:username:chat_id"
+    _, _, username, chat_id_str = query.data.split(":", 3)
+    account = await db.get_account_by_username_and_chat(username, int(chat_id_str))
 
     if not account:
         await query.edit_message_text(f"❌ @{username} no encontrado.")

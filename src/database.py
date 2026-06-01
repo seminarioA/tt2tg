@@ -31,8 +31,8 @@ async def add_account(username: str, chat_id: int) -> dict:
         """
         INSERT INTO accounts (username, chat_id)
         VALUES ($1, $2)
-        ON CONFLICT (username) DO UPDATE
-          SET chat_id = EXCLUDED.chat_id, is_active = TRUE
+        ON CONFLICT (username, chat_id) DO UPDATE
+          SET is_active = TRUE
         RETURNING *
         """,
         username, chat_id,
@@ -40,11 +40,11 @@ async def add_account(username: str, chat_id: int) -> dict:
     return dict(row)
 
 
-async def remove_account(username: str) -> bool:
+async def remove_account(username: str, chat_id: int) -> bool:
     pool = await get_pool()
     result = await pool.execute(
-        "UPDATE accounts SET is_active = FALSE WHERE username = $1 AND is_active = TRUE",
-        username,
+        "UPDATE accounts SET is_active = FALSE WHERE username = $1 AND chat_id = $2 AND is_active = TRUE",
+        username, chat_id,
     )
     return result.split()[-1] != "0"
 
@@ -57,9 +57,12 @@ async def get_active_accounts() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_account_by_username(username: str) -> Optional[dict]:
+async def get_account_by_username_and_chat(username: str, chat_id: int) -> Optional[dict]:
     pool = await get_pool()
-    row = await pool.fetchrow("SELECT * FROM accounts WHERE username = $1", username)
+    row = await pool.fetchrow(
+        "SELECT * FROM accounts WHERE username = $1 AND chat_id = $2",
+        username, chat_id,
+    )
     return dict(row) if row else None
 
 
@@ -71,14 +74,15 @@ async def update_last_checked(account_id: int):
 
 
 async def get_accounts_with_unsent_videos() -> list[dict]:
-    """Accounts that have videos recorded but not yet sent — used for restart recovery."""
+    """Active accounts that have videos recorded but not yet sent — used for restart recovery."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
-        SELECT DISTINCT a.* FROM accounts a
+        SELECT DISTINCT ON (a.id) a.*
+        FROM accounts a
         JOIN videos v ON v.account_id = a.id
         WHERE a.is_active = TRUE AND v.sent_at IS NULL
-        ORDER BY a.added_at
+        ORDER BY a.id, a.added_at
         """
     )
     return [dict(r) for r in rows]

@@ -23,16 +23,20 @@ _archiving: set[str] = set()
 _paused: set[str] = set()
 
 
-def pause_account(username: str):
-    _paused.add(username)
+def _key(username: str, chat_id: int) -> str:
+    return f"{username}:{chat_id}"
 
 
-def resume_account(username: str):
-    _paused.discard(username)
+def pause_account(username: str, chat_id: int):
+    _paused.add(_key(username, chat_id))
 
 
-def is_paused(username: str) -> bool:
-    return username in _paused
+def resume_account(username: str, chat_id: int):
+    _paused.discard(_key(username, chat_id))
+
+
+def is_paused(username: str, chat_id: int) -> bool:
+    return _key(username, chat_id) in _paused
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,7 +109,7 @@ async def _iter_new_videos(bot: Bot, account: dict, entries: list[dict]) -> int:
     username = account["username"]
     sent = 0
     for entry in entries:
-        if username in _paused:
+        if _key(username, account["chat_id"]) in _paused:
             logger.info("@%s paused — stopping mid-send", username)
             break
 
@@ -138,12 +142,14 @@ async def archive_account(bot: Bot, account: dict, resuming: bool = False):
     username = account["username"]
     chat_id = account["chat_id"]
 
-    # Prevent two parallel archive tasks for the same account
-    if username in _archiving:
-        logger.warning("archive_account called while @%s is already archiving — skipped", username)
+    archive_key = _key(username, account["chat_id"])
+
+    # Prevent two parallel archive tasks for the same account+chat
+    if archive_key in _archiving:
+        logger.warning("archive_account called while @%s in chat %s is already archiving — skipped", username, account["chat_id"])
         return
 
-    _archiving.add(username)
+    _archiving.add(archive_key)
 
     try:
         await send_text(bot, chat_id, f"🔍 Obteniendo videos de @{username}…")
@@ -174,7 +180,7 @@ async def archive_account(bot: Bot, account: dict, resuming: bool = False):
         sent = await _iter_new_videos(bot, account, list(reversed(entries)))
         await db.update_last_checked(account["id"])
 
-        if username in _paused:
+        if _key(username, chat_id) in _paused:
             await send_text(
                 bot, chat_id,
                 f"⏸️ @{username} — pausado ({sent} enviados en esta sesión). Usá /resume @{username} para continuar.",
@@ -186,7 +192,7 @@ async def archive_account(bot: Bot, account: dict, resuming: bool = False):
             )
 
     finally:
-        _archiving.discard(username)
+        _archiving.discard(archive_key)
 
 
 # ── Public: called from polling loop ─────────────────────────────────────────
@@ -194,7 +200,7 @@ async def archive_account(bot: Bot, account: dict, resuming: bool = False):
 async def check_new_videos(bot: Bot, account: dict):
     username = account["username"]
 
-    if username in _archiving:
+    if _key(username, account["chat_id"]) in _archiving:
         logger.debug("Skipping @%s — initial archive still running", username)
         return
 

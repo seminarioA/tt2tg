@@ -50,7 +50,7 @@ def build_caption(
         f"🔁 {_fmt_num(repost_count)}",
     ]
     if desc:
-        parts.append(desc)
+        parts.append(f"💬 {desc}")
     if url:
         parts.append(f"🔗 {url}")
 
